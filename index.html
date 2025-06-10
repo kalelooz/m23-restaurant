@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M23 Cafe & Restaurant - Modern Dining in Doha</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Alpine.js Initialization -->
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('restaurantApp', () => ({
+                mobileMenuOpen: false,
+                reservationModalOpen: false,
+                occasion: '',
+                guestCount: 2,
+                loadingPlanner: false,
+                mealPlan: '',
+
+                // Function to show a custom notification
+                showNotification(message, isError = false) {
+                    const notificationBox = document.createElement('div');
+                    notificationBox.textContent = message;
+                    notificationBox.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        background-color: ${isError ? '#f5365c' : '#2dce89'};
+                        color: white;
+                        padding: 1rem 2rem;
+                        border-radius: 8px;
+                        z-index: 1000;
+                        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                        font-family: 'Inter', sans-serif;
+                        transition: opacity 0.3s ease;
+                    `;
+                    document.body.appendChild(notificationBox);
+                    setTimeout(() => {
+                        notificationBox.style.opacity = '0';
+                        setTimeout(() => notificationBox.remove(), 300);
+                    }, 4000);
+                },
+                
+                // Function to call Gemini API
+                async callGemini(prompt) {
+                    const apiKey = ""; // API Key will be handled by the environment
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                    
+                    try {
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`API Error: ${response.statusText}`);
+                        }
+
+                        const result = await response.json();
+                        
+                        if (result.candidates && result.candidates.length > 0 &&
+                            result.candidates[0].content && result.candidates[0].content.parts &&
+                            result.candidates[0].content.parts.length > 0) {
+                            return result.candidates[0].content.parts[0].text;
+                        } else {
+                            console.error("Unexpected API response structure:", result);
+                            // Check for safety ratings or other issues
+                            if(result.candidates && result.candidates.length > 0 && result.candidates[0].finishReason === 'SAFETY') {
+                                return "The generated content could not be displayed due to safety settings.";
+                            }
+                            return "Could not get a response. Please try again.";
+                        }
+                    } catch (error) {
+                        console.error("Error calling Gemini API:", error);
+                        this.showNotification(`An error occurred: ${error.message}`, true);
+                        return `An error occurred: ${error.message}`;
+                    }
+                },
+
+                // Feature 1: Get AI-powered menu description
+                async getGeminiDescription(menuItemElement) {
+                    const originalDesc = menuItemElement.querySelector('p');
+                    const dishName = menuItemElement.dataset.name;
+                    const baseDesc = menuItemElement.dataset.description;
+
+                    originalDesc.innerHTML = '✨ Thinking of something poetic...';
+
+                    const prompt = `Generate a short, single-paragraph, poetic, and appetizing menu description for a dish at an elegant restaurant. Dish name: "${dishName}". Basic ingredients: "${baseDesc}". Make it sound irresistible.`;
+                    
+                    const newDescription = await this.callGemini(prompt);
+                    originalDesc.innerHTML = newDescription.replace(/\n/g, '<br>'); // Keep formatting simple
+                },
+
+                // Feature 2: Get AI-powered meal plan
+                async getMealPlan() {
+                    if (!this.occasion || !this.guestCount) {
+                        this.showNotification("Please fill in the occasion and number of guests.", true);
+                        return;
+                    }
+
+                    this.loadingPlanner = true;
+                    this.mealPlan = '';
+
+                    // Gather the full menu from the DOM
+                    const menuItems = Array.from(document.querySelectorAll('.menu-item')).map(el => {
+                        return `${el.dataset.name}: ${el.dataset.description}`;
+                    }).join('\n');
+
+                    const prompt = `I am planning a meal at M23 Restaurant for ${this.guestCount} people. The occasion is "${this.occasion}". 
+                    Based on the restaurant's menu below, please suggest a complete 3-course meal plan (Appetizers, Main Courses, Desserts). 
+                    For each course, explain why your choices are a good fit for the occasion. Format the response nicely using HTML with headings and paragraphs.
+                    
+                    Here is the menu:
+                    ${menuItems}`;
+
+                    const plan = await this.callGemini(prompt);
+                    this.mealPlan = plan.replace(/\n/g, '<br>'); // Basic HTML formatting
+                    this.loadingPlanner = false;
+                }
+            }));
+        });
+    </script>
+    
+    <!-- Alpine.js library -->
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <style>
+        /* Custom styles to apply the fonts */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #121212; /* Dark background for sophistication */
+            color: #E0E0E0; /* Off-white text for readability */
+        }
+        h1, h2, h3, .font-display {
+            font-family: 'Playfair Display', serif;
+        }
+        .hero-bg {
+            background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('https://placehold.co/1600x900/4a4a4a/ffffff?text=M23+Ambiance');
+            background-size: cover;
+            background-position: center;
+        }
+        .cta-button {
+            transition: all 0.3s ease;
+        }
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+        .gallery-img {
+            transition: transform 0.3s ease, filter 0.3s ease;
+        }
+        .gallery-img:hover {
+            transform: scale(1.05);
+            filter: brightness(1.1);
+        }
+        .gemini-button {
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .gemini-button:hover {
+            transform: scale(1.2);
+        }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body x-data="restaurantApp" x-cloak>
+
+    <!-- Header & Navigation -->
+    <header class="fixed top-0 left-0 right-0 z-50 transition-all duration-300" 
+            :class="{ 'bg-black/80 backdrop-blur-sm shadow-lg': (window.scrollY > 50), 'bg-transparent': (window.scrollY <= 50) }">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <a href="#" class="text-3xl font-display text-white font-bold">M23</a>
+                
+                <!-- Desktop Navigation -->
+                <nav class="hidden md:flex items-center space-x-6">
+                    <a href="#about" class="text-white hover:text-amber-400 transition">Our Story</a>
+                    <a href="#menu" class="text-white hover:text-amber-400 transition">Menu</a>
+                    <a href="#gemini-planner" class="text-white hover:text-amber-400 transition">✨ Meal Planner</a>
+                    <a href="#gallery" class="text-white hover:text-amber-400 transition">Gallery</a>
+                    <a href="#contact" class="text-white hover:text-amber-400 transition">Contact</a>
+                    <a href="tel:+97444151247" class="text-amber-500 border border-amber-500 px-4 py-2 rounded-full font-semibold hover:bg-amber-500 hover:text-black cta-button">Call Us</a>
+                    <a href="https://www.talabat.com/qatar/m23-cafe-and-restaurant" target="_blank" class="bg-amber-500 text-black px-4 py-2 rounded-full font-semibold hover:bg-amber-400 cta-button">Talabat Order</a>
+                </nav>
+
+                <!-- Mobile Menu Button -->
+                <div class="md:hidden">
+                    <button @click="mobileMenuOpen = !mobileMenuOpen" class="text-white focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Menu -->
+        <div x-show="mobileMenuOpen" @click.away="mobileMenuOpen = false" class="md:hidden bg-black/95 absolute top-full left-0 w-full"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 transform -translate-y-2"
+             x-transition:enter-end="opacity-100 transform translate-y-0"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100 transform translate-y-0"
+             x-transition:leave-end="opacity-0 transform -translate-y-2">
+            <nav class="flex flex-col items-center space-y-4 py-6">
+                <a href="#about" @click="mobileMenuOpen = false" class="text-white hover:text-amber-400 transition">Our Story</a>
+                <a href="#menu" @click="mobileMenuOpen = false" class="text-white hover:text-amber-400 transition">Menu</a>
+                <a href="#gemini-planner" @click="mobileMenuOpen = false" class="text-white hover:text-amber-400 transition">✨ Meal Planner</a>
+                <a href="#gallery" @click="mobileMenuOpen = false" class="text-white hover:text-amber-400 transition">Gallery</a>
+                <a href="#contact" @click="mobileMenuOpen = false" class="text-white hover:text-amber-400 transition">Contact</a>
+                <a href="tel:+97444151247" class="bg-transparent border border-amber-500 text-amber-500 px-6 py-3 rounded-full font-bold hover:bg-amber-500 hover:text-black cta-button">Call Us</a>
+                <a href="https://www.talabat.com/qatar/m23-cafe-and-restaurant" target="_blank" class="bg-amber-500 text-black px-6 py-3 rounded-full font-bold hover:bg-amber-400 cta-button">Talabat Order</a>
+                <button @click="reservationModalOpen = true; mobileMenuOpen = false" class="bg-gray-700 text-white px-6 py-3 rounded-full font-bold hover:bg-gray-600 cta-button">Book a Table</button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="h-screen flex items-center justify-center hero-bg">
+        <div class="text-center text-white">
+            <h1 class="text-5xl md:text-7xl lg:text-8xl font-display mb-4 leading-tight">Experience Culinary Art</h1>
+            <p class="text-lg md:text-xl max-w-2xl mx-auto mb-8">A modern cafe and restaurant in the heart of Doha, where every dish is a masterpiece.</p>
+            <div class="flex justify-center space-x-4">
+                <button @click="reservationModalOpen = true" class="bg-amber-500 text-black px-8 py-4 rounded-full font-bold text-lg hover:bg-amber-400 cta-button">Book a Table</button>
+                <a href="#menu" class="bg-transparent border border-white text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-white hover:text-black cta-button">View Menu</a>
+            </div>
+        </div>
+    </section>
+
+    <main>
+        <!-- About/Story Section -->
+        <section id="about" class="py-20 md:py-32 bg-black">
+            <div class="container mx-auto px-6">
+                <div class="grid md:grid-cols-2 gap-12 items-center">
+                    <div>
+                        <img src="https://placehold.co/600x750/333333/ffffff?text=Chef+in+Action" alt="Chef preparing a dish" class="rounded-lg shadow-2xl w-full">
+                    </div>
+                    <div class="text-center md:text-left">
+                        <h2 class="text-4xl md:text-5xl font-display mb-6 text-amber-400">Our Story</h2>
+                        <p class="mb-4 text-lg">Born from a passion for authentic flavors and innovative cuisine, M23 is more than just a restaurant—it's a destination. Our name pays homage to our roots at Al Musalla Street, a place of community and connection.</p>
+                        <p class="mb-6 text-lg">We believe in using the freshest local ingredients to craft dishes that are both comforting and surprising. Our mission is to create unforgettable dining experiences that delight the senses and nourish the soul.</p>
+                        <a href="#contact" class="text-amber-400 font-semibold hover:text-white">Visit Us &rarr;</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Menu Section -->
+        <section id="menu" class="py-20 md:py-32">
+            <div class="container mx-auto px-6 text-center">
+                <h2 class="text-4xl md:text-5xl font-display mb-4 text-amber-400">Our Menu</h2>
+                <p class="max-w-3xl mx-auto mb-12 text-lg">A curated selection of dishes made with love, precision, and the finest ingredients. Click the ✨ to get a poetic description!</p>
+                
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-10 text-left">
+                    <!-- Category: Appetizers -->
+                    <div class="space-y-6">
+                        <h3 class="text-2xl font-display border-b-2 border-amber-400 pb-2">Appetizers</h3>
+                        <div class="menu-item" data-name="Burrata & Heirloom Tomatoes" data-description="Creamy burrata, balsamic glaze, fresh basil.">
+                            <h4 class="text-xl font-semibold flex items-center">Burrata & Heirloom Tomatoes <span class="ml-2 text-xl gemini-button" @click="getGeminiDescription($event.target.closest('.menu-item'))">✨</span></h4>
+                            <p class="text-gray-400">Creamy burrata, balsamic glaze, fresh basil.</p>
+                        </div>
+                        <div class="menu-item" data-name="Spicy Tuna Tartare" data-description="Avocado mousse, crispy wonton, citrus soy dressing.">
+                            <h4 class="text-xl font-semibold flex items-center">Spicy Tuna Tartare <span class="ml-2 text-xl gemini-button" @click="getGeminiDescription($event.target.closest('.menu-item'))">✨</span></h4>
+                            <p class="text-gray-400">Avocado mousse, crispy wonton, citrus soy dressing.</p>
+                        </div>
+                    </div>
+                    <!-- Category: Main Courses -->
+                    <div class="space-y-6">
+                        <h3 class="text-2xl font-display border-b-2 border-amber-400 pb-2">Main Courses</h3>
+                        <div class="menu-item" data-name="Pan-Seared Salmon" data-description="Served with asparagus risotto and a lemon-dill sauce.">
+                            <h4 class="text-xl font-semibold flex items-center">Pan-Seared Salmon <span class="ml-2 text-xl gemini-button" @click="getGeminiDescription($event.target.closest('.menu-item'))">✨</span></h4>
+                            <p class="text-gray-400">Served with asparagus risotto and a lemon-dill sauce.</p>
+                        </div>
+                        <div class="menu-item" data-name="M23 Signature Burger" data-description="Wagyu beef patty, truffle aioli, aged cheddar, brioche bun.">
+                            <h4 class="text-xl font-semibold flex items-center">M23 Signature Burger <span class="ml-2 text-xl gemini-button" @click="getGeminiDescription($event.target.closest('.menu-item'))">✨</span></h4>
+                            <p class="text-gray-400">Wagyu beef patty, truffle aioli, aged cheddar, brioche bun.</p>
+                        </div>
+                        <div class="menu-item" data-name="Saffron Risotto" data-description="With wild mushrooms and parmesan crisp.">
+                            <h4 class="text-xl font-semibold flex items-center">Saffron Risotto <span class="ml-2 text-xl gemini-button" @click="getGeminiDescription($event.target.closest('.menu-item'))">✨</span></h4>
+                            <p class="text-gray-400">With wild mushrooms and parmesan crisp.</p>
+                        </div>
+                    </div>
+                    <!-- Category: Desserts -->
+                    <div class="space-y-6">
+                        <h3 class="text-2xl font-display border-b-2 border-amber-400 pb-2">Desserts</h3>
+                        <div class="menu-item" data-name="Deconstructed Tiramisu" data-description="Espresso-soaked ladyfingers, mascarpone cream, cocoa dust.">
+                            <h4 class="text-xl font-semibold flex items-center">Deconstructed Tiramisu <span class="ml-2 text-xl gemini-button" @click="getGeminiDescription($event.target.closest('.menu-item'))">✨</span></h4>
+                            <p class="text-gray-400">Espresso-soaked ladyfingers, mascarpone cream, cocoa dust.</p>
+                        </div>
+                        <div class="menu-item" data-name="Molten Lava Cake" data-description="Warm chocolate cake with a raspberry coulis center.">
+                            <h4 class="text-xl font-semibold flex items-center">Molten Lava Cake <span class="ml-2 text-xl gemini-button" @click="getGeminiDescription($event.target.closest('.menu-item'))">✨</span></h4>
+                            <p class="text-gray-400">Warm chocolate cake with a raspberry coulis center.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Gemini Meal Planner Section -->
+        <section id="gemini-planner" class="py-20 md:py-32 bg-black">
+            <div class="container mx-auto px-6 text-center">
+                <h2 class="text-4xl md:text-5xl font-display mb-4 text-amber-400">✨ Plan Your Perfect Meal</h2>
+                <p class="max-w-3xl mx-auto mb-8 text-lg">Tell us the occasion, and our AI chef will curate a special menu just for you.</p>
+                
+                <div class="max-w-2xl mx-auto">
+                    <div class="grid sm:grid-cols-2 gap-4 mb-4">
+                        <input type="text" x-model="occasion" placeholder="e.g., Romantic Dinner, Family Lunch" class="w-full p-3 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:border-amber-400 text-white">
+                        <input type="number" x-model="guestCount" min="1" placeholder="Number of Guests" class="w-full p-3 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:border-amber-400 text-white">
+                    </div>
+                    <button @click="getMealPlan" class="bg-amber-500 text-black px-8 py-3 rounded-full font-bold text-lg hover:bg-amber-400 cta-button" :disabled="loadingPlanner">
+                        <span x-show="!loadingPlanner">Get Suggestions</span>
+                        <span x-show="loadingPlanner">✨ Crafting your menu...</span>
+                    </button>
+                </div>
+
+                <div x-show="mealPlan" class="mt-12 p-8 bg-gray-800 rounded-lg text-left max-w-4xl mx-auto"
+                     x-transition:enter="transition ease-out duration-300"
+                     x-transition:enter-start="opacity-0 transform -translate-y-4"
+                     x-transition:enter-end="opacity-100 transform translate-y-0">
+                    <h3 class="text-2xl font-display text-amber-400 mb-4">Your AI-Curated Menu</h3>
+                    <div x-html="mealPlan"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Gallery Section -->
+        <section id="gallery" class="py-20 md:py-32">
+             <div class="container mx-auto px-6 text-center">
+                <h2 class="text-4xl md:text-5xl font-display mb-12 text-amber-400">A Glimpse Inside M23</h2>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="col-span-2 row-span-2 rounded-lg overflow-hidden">
+                        <img src="https://placehold.co/800x800/2a2a2a/ffffff?text=Signature+Dish" alt="Signature Dish" class="w-full h-full object-cover gallery-img">
+                    </div>
+                    <div class="rounded-lg overflow-hidden">
+                        <img src="https://placehold.co/400x400/5a5a5a/ffffff?text=Cozy+Interior" alt="Restaurant Interior" class="w-full h-full object-cover gallery-img">
+                    </div>
+                    <div class="rounded-lg overflow-hidden">
+                        <img src="https://placehold.co/400x400/3a3a3a/ffffff?text=Artisan+Coffee" alt="Artisan Coffee" class="w-full h-full object-cover gallery-img">
+                    </div>
+                    <div class="col-span-2 rounded-lg overflow-hidden">
+                        <img src="https://placehold.co/800x400/4a4a4a/ffffff?text=Our+Happy+Guests" alt="Happy Customers" class="w-full h-full object-cover gallery-img">
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Testimonials Section -->
+        <section id="reviews" class="py-20 md:py-32 bg-black">
+            <div class="container mx-auto px-6 text-center">
+                <h2 class="text-4xl md:text-5xl font-display mb-12 text-amber-400">What Our Guests Say</h2>
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <!-- Testimonial 1 -->
+                    <div class="bg-gray-800 p-8 rounded-lg text-left">
+                        <p class="italic mb-4">"An absolute gem in Doha! The atmosphere is chic and cozy, and the food is out of this world. The M23 burger is a must-try. We'll be back for sure!"</p>
+                        <p class="font-bold text-amber-400">- Fatima A.</p>
+                        <div class="text-amber-400 mt-2">★★★★★</div>
+                    </div>
+                    <!-- Testimonial 2 -->
+                    <div class="bg-gray-800 p-8 rounded-lg text-left">
+                        <p class="italic mb-4">"I came for a business lunch and was thoroughly impressed. The service was impeccable and the pan-seared salmon was cooked to perfection. Highly recommended."</p>
+                        <p class="font-bold text-amber-400">- Omar B.</p>
+                        <div class="text-amber-400 mt-2">★★★★★</div>
+                    </div>
+                    <!-- Testimonial 3 -->
+                    <div class="bg-gray-800 p-8 rounded-lg text-left">
+                        <p class="italic mb-4">"The best coffee and dessert spot. The AI-generated menu descriptions are so fun and creative! It’s my new favorite place to unwind."</p>
+                        <p class="font-bold text-amber-400">- Layla M.</p>
+                        <div class="text-amber-400 mt-2">★★★★★</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Instagram Feed Section -->
+        <section id="instagram" class="py-20 md:py-24 text-center">
+            <h2 class="text-4xl font-display mb-4 text-amber-400">Follow Our Journey</h2>
+            <a href="https://www.instagram.com/m23_qa/" target="_blank" class="text-lg text-white hover:text-amber-400 transition">@m23_qa on Instagram</a>
+            <div class="container mx-auto px-6 mt-8">
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                    <a href="https://www.instagram.com/m23_qa/" target="_blank" class="block overflow-hidden rounded"><img src="https://placehold.co/300x300/4a4a4a/ffffff?text=@m23_qa" alt="Instagram post" class="gallery-img"></a>
+                    <a href="https://www.instagram.com/m23_qa/" target="_blank" class="block overflow-hidden rounded"><img src="https://placehold.co/300x300/5a5a5a/ffffff?text=@m23_qa" alt="Instagram post" class="gallery-img"></a>
+                    <a href="https://www.instagram.com/m23_qa/" target="_blank" class="block overflow-hidden rounded"><img src="https://placehold.co/300x300/3a3a3a/ffffff?text=@m23_qa" alt="Instagram post" class="gallery-img"></a>
+                    <a href="https://www.instagram.com/m23_qa/" target="_blank" class="block overflow-hidden rounded"><img src="https://placehold.co/300x300/4a4a4a/ffffff?text=@m23_qa" alt="Instagram post" class="gallery-img"></a>
+                    <a href="https://www.instagram.com/m23_qa/" target="_blank" class="block overflow-hidden rounded"><img src="https://placehold.co/300x300/5a5a5a/ffffff?text=@m23_qa" alt="Instagram post" class="gallery-img"></a>
+                    <a href="https://www.instagram.com/m23_qa/" target="_blank" class="block overflow-hidden rounded"><img src="https://placehold.co/300x300/3a3a3a/ffffff?text=@m23_qa" alt="Instagram post" class="gallery-img"></a>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- Contact & Location Section -->
+        <section id="contact" class="py-20 md:py-32 bg-black">
+            <div class="container mx-auto px-6">
+                 <div class="text-center">
+                    <h2 class="text-4xl md:text-5xl font-display mb-12 text-amber-400">Visit Us</h2>
+                 </div>
+                <div class="grid lg:grid-cols-2 gap-12">
+                    <div class="space-y-6">
+                        <div>
+                            <h3 class="text-2xl font-display text-amber-400">Location</h3>
+                            <p class="text-lg">910 Al Musalla St, Doha, Qatar</p>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-display text-amber-400">Opening Hours</h3>
+                            <p class="text-lg">Every Day: 6:00 AM - 12:00 AM</p>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-display text-amber-400">Contact</h3>
+                            <p class="text-lg">Phone: <a href="tel:+97444151247" class="hover:text-amber-400">+974 4415 1247</a></p>
+                        </div>
+                         <div class="flex space-x-4 mt-4">
+                            <a href="https://www.instagram.com/m23_qa/" target="_blank" class="text-white hover:text-amber-400">
+                                <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M12.315 2c-4.013 0-4.473.016-6.044.09-1.57.074-2.654.34-3.593 1.28C1.753 4.316.52 5.4.446 6.97c-.074 1.57-.09 2.03-.09 6.044s.016 4.473.09 6.044c.074 1.57.34 2.654 1.28 3.593.94.94 2.023 1.208 3.594 1.282 1.57.074 2.03.09 6.044.09s4.473-.016 6.044-.09c1.57-.074 2.654-.34 3.593-1.282.94-.939 1.208-2.022 1.282-3.593.074-1.57.09-2.03.09-6.044s-.016-4.473-.09-6.044c-.074-1.57-.34-2.654-1.282-3.593C20.534.52 19.45.252 17.88.178 16.31.1 15.85.084 12.315.084h-.002zm0 2.163c3.9 0 4.33.015 5.85.086 1.4.064 2.22.31 2.89.976.67.668.913 1.49.976 2.89.07 1.52.086 1.95.086 5.85s-.015 4.33-.086 5.85c-.063 1.4-.308 2.22-.976 2.89-.67.67-1.49.913-2.89.976-1.52.07-1.95.086-5.85.086s-4.33-.015-5.85-.086c-1.4-.063-2.22-.308-2.89-.976-.668-.67-1.488-.913-2.89-.976-1.52-.07-1.95-.086-5.85-.086s-.015-4.33.086-5.85c.063-1.4.31-2.22.976-2.89.67-.668 1.49-.913 2.89-.976 1.52-.07 1.95-.086 5.85-.086zm0 1.96c-2.4 0-4.35 1.95-4.35 4.35s1.95 4.35 4.35 4.35 4.35-1.95 4.35-4.35-1.95-4.35-4.35-4.35zm0 6.913c-1.41 0-2.563-1.153-2.563-2.563S10.904 9.4 12.315 9.4s2.563 1.153 2.563 2.563-1.153 2.563-2.563 2.563zm5.25-6.98c-.69 0-1.25.56-1.25 1.25s.56 1.25 1.25 1.25 1.25-.56 1.25-1.25-.56-1.25-1.25-1.25z" clip-rule="evenodd" /></svg>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="rounded-lg overflow-hidden shadow-2xl h-96 lg:h-full">
+                        <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3606.358671879949!2d51.5242723!3d25.3257427!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3e45c55a6bbc6339%3A0x929867dd8bfe90d4!2sM23%20cafe%20and%20restaurant!5e0!3m2!1sen!2sqa!4v1749548574656!5m2!1sen!2sqa" width="100%" height="100%" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-black py-8">
+        <div class="container mx-auto px-6 text-center text-gray-400">
+            <p>&copy; 2025 M23 Cafe & Restaurant. All Rights Reserved.</p>
+            <p>Designed with passion.</p>
+        </div>
+    </footer>
+
+    <!-- Reservation Modal -->
+    <div x-show="reservationModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75" style="display: none;">
+        <div @click.away="reservationModalOpen = false" class="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-display text-amber-400">Book a Table</h3>
+                <button @click="reservationModalOpen = false" class="text-white">&times;</button>
+            </div>
+            <form>
+                <div class="space-y-4">
+                    <input type="text" placeholder="Your Name" class="w-full p-3 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:border-amber-400 text-white">
+                    <input type="tel" placeholder="Phone Number" class="w-full p-3 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:border-amber-400 text-white">
+                    <input type="date" class="w-full p-3 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:border-amber-400 text-white">
+                    <input type="time" class="w-full p-3 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:border-amber-400 text-white">
+                    <select class="w-full p-3 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:border-amber-400 text-white">
+                        <option>2 People</option>
+                        <option>3 People</option>
+                        <option>4 People</option>
+                        <option>5+ People</option>
+                    </select>
+                    <button type="submit" @click.prevent="reservationModalOpen = false; showNotification('Thank you! Your reservation request has been sent.')" class="w-full bg-amber-500 text-black py-3 rounded-full font-bold hover:bg-amber-400 cta-button">Request Booking</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
